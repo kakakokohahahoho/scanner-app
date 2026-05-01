@@ -12,8 +12,8 @@ st.write("ถ่ายรูปฉลากหลังซองมาได้�
 try:
     api_key = st.secrets["AIzaSyAULsj8QugcEXt-hBnpaT9wafUsZEMCkOE"]
     client = genai.Client(api_key=api_key)
-except:
-    st.warning("⚠️ รอการเชื่อมต่อ API Key")
+except Exception as e:
+    st.warning(f"⚠️ พบปัญหา: {e}")
 
 #เลือกภาษา
 st.markdown("### 🌐 เลือกภาษาที่ต้องการ")
