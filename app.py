@@ -10,7 +10,7 @@ st.write("ถ่ายรูปฉลากหลังซองมาได้�
 
 #API Key
 try:
-    api_key = st.secrets["AIzaSyAULsj8QugcEXt-hBnpaT9wafUsZEMCkOE"]
+    api_key = st.secrets["GEMINI_API_KEY"]
     client = genai.Client(api_key=api_key)
 except Exception as e:
     st.warning(f"⚠️ พบปัญหา: {e}")
