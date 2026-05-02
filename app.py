@@ -1,21 +1,26 @@
 import streamlit as st
 from google import genai
 from PIL import Image
+import io
 
 # ตั้งค่าหน้าเว็บ
-st.set_page_config(page_title="SafeEat - เครื่องมือสแกนเพื่อลูก", page_icon="🛡️")
+st.set_page_config(page_title="SafeEat AI - ปลอดภัยเพื่อลูก", page_icon="🛡️")
 
 st.title("🛡️ SafeEat: ผู้ช่วยตรวจเช็กของกินให้ลูกสาว")
 st.write("ระบุสิ่งที่แพ้ ถ่ายรูปฉลาก แล้วให้ AI ช่วยตัดสินใจเพื่อความปลอดภัยครับ")
 
-# เชื่อมต่อ API Key
+# เชื่อมต่อ API Key 
+client = None
 try:
-    api_key = st.secrets["GEMINI_API_KEY"]
-    client = genai.Client(api_key=api_key)
+    if "GEMINI_API_KEY" in st.secrets:
+        api_key = st.secrets["GEMINI_API_KEY"]
+        client = genai.Client(api_key=api_key)
+    else:
+        st.error("❌ ไม่พบ GEMINI_API_KEY ใน Secrets ของ Streamlit")
 except Exception as e:
-    st.warning(f"⚠️ พบปัญหาการเชื่อมต่อ: {e}")
+    st.error(f"⚠️ ปัญหาการเชื่อมต่อ API: {e}")
 
-# ระบุข้อมูลผู้แพ้
+# ส่วนระบุข้อมูลการแพ้
 st.markdown("### 📋 ข้อมูลการแพ้อาหาร")
 allergy_list = st.text_input(
     "ระบุชื่ออาหารที่แพ้ (แยกด้วยจุลภาค):", 
@@ -23,55 +28,58 @@ allergy_list = st.text_input(
     help="เช่น ถั่วลิสง, นมวัว, ไข่"
 )
 
-target_language = st.selectbox("เลือกภาษาในการแสดงผลคำแปล:", ["ภาษาไทย", "English"])
+target_language = st.selectbox("เลือกภาษาในการแสดงผล:", ["ภาษาไทย", "English"])
 
 # อัปโหลดรูปภาพ
 st.markdown("### 📸 ถ่ายรูปฉลากส่วนผสม")
-uploaded_file = st.file_uploader("เลือกรูปภาพฉลาก", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("เลือกรูปภาพฉลาก (JPG, PNG)", type=["jpg", "jpeg", "png"])
 
-if uploaded_file is not None:
+if uploaded_file is not None and client is not None:
     image = Image.open(uploaded_file)
-    st.image(image, caption="รูปฉลากที่ตรวจเช็ก", use_container_width=True)
+    st.image(image, caption="รูปฉลากที่กำลังตรวจสอบ", use_container_width=True)
 
     if st.button("🚀 เริ่มวิเคราะห์ความปลอดภัย", type="primary"):
-        with st.spinner('⏳ AI กำลังวิเคราะห์ส่วนผสมอย่างละเอียด...'):
+        with st.spinner('⏳ AI กำลังตรวจสอบส่วนผสมอย่างละเอียด...'):
             
-            # Prompt ใหม่ที่สั่งให้ AI วิเคราะห์ความปลอดภัยโดยเฉพาะ
+            # Prompt 
             prompt = f"""
-            ทำหน้าที่เป็นผู้เชี่ยวชาญด้านความปลอดภัยอาหาร (Food Safety Expert)
-            ภารกิจ: ตรวจสอบรูปภาพฉลากนี้ว่ามีส่วนผสมที่ผู้ใช้แพ้คือ "{allergy_list}" หรือไม่
+            You are a Food Safety Expert. 
+            Task: Check if this label contains: "{allergy_list}".
             
-            ให้แสดงผลลัพธ์ตามโครงสร้างนี้เท่านั้น (แปลเป็น {target_language}):
+            Format the output strictly in {target_language}:
+            1. **Risk Level**: [Danger] / [Warning] / [Safe]
+            2. **Reason**: Short explanation.
+            3. **Detected Ingredients**: Summary of main ingredients found.
             
-            1. **ระดับความเสี่ยง**: 
-               - [อันตราย] หากพบส่วนผสมที่แพ้โดยตรง
-               - [ควรระวัง] หากพบคำเตือนว่า 'อาจมีส่วนผสมของ...' หรือโรงงานผลิตร่วมกับสิ่งที่แพ้
-               - [ปลอดภัย] หากไม่พบส่วนผสมที่แพ้เลย
-            
-            2. **เหตุผล**: อธิบายสั้นๆ ว่าเจออะไร หรือไม่เจออะไร
-            
-            3. **รายการส่วนผสมที่พบ**: สรุปรายการส่วนผสมหลักที่อ่านได้จากภาพ
-            
-            หมายเหตุ: หากเป็นภาษาต่างประเทศ ให้แปลเป็น {target_language} ให้ด้วย
+            If the label is in another language, translate to {target_language}.
             """
             
             try:
+                # เปลี่ยนรุ่นเป็น 1.5-flash เพื่อเลี่ยงปัญหาโควตาเต็ม (429) ของรุ่น 2.0
                 response = client.models.generate_content(
-                    model='gemini-2.0-flash',
+                    model='gemini-1.5-flash', 
                     contents=[prompt, image]
                 )
                 
-                # ตกแต่งการแสดงผลตามระดับความเสี่ยง
                 result_text = response.text
-                if "อันตราย" in result_text or "Danger" in result_text:
-                    st.error("🛑 ผลการวิเคราะห์: มีความเสี่ยงสูง")
-                elif "ระวัง" in result_text or "Warning" in result_text:
-                    st.warning("⚠️ ผลการวิเคราะห์: ควรระมัดระวัง")
+                
+                # แสดงแถบสีตามความเสี่ยง
+                if any(x in result_text for x in ["อันตราย", "Danger", "เสี่ยงสูง"]):
+                    st.error("🛑 ผลการวิเคราะห์: พบส่วนผสมที่อันตราย!")
+                elif any(x in result_text for x in ["ระวัง", "Warning", "Caution"]):
+                    st.warning("⚠️ ผลการวิเคราะห์: มีความเสี่ยงหรือควรระวัง")
                 else:
-                    st.success("✅ ผลการวิเคราะห์: ไม่พบส่วนผสมที่ระบุว่าแพ้")
+                    st.success("✅ ผลการวิเคราะห์: ไม่พบส่วนผสมที่แพ้")
                 
-                st.write("---")
+                st.divider()
                 st.markdown(result_text)
-                
+                st.info("💡 หมายเหตุ: ควรตรวจสอบฉลากด้วยตนเองอีกครั้งเพื่อความแม่นยำสูงสุด")
+
             except Exception as e:
-                st.error(f"เกิดข้อผิดพลาด: {e}")
+                # ดักจับ Error 429 (โควตาเต็ม) ให้ชัดเจน
+                if "429" in str(e):
+                    st.error("🚫 โควตาฟรีของวันนี้หมดแล้วครับ (Google Limit) กรุณาลองใหม่พรุ่งนี้ หรือเปลี่ยน API Key")
+                elif "404" in str(e):
+                    st.error("🚫 ไม่พบโมเดล (404) กรุณาตรวจสอบว่า API Key รองรับโมเดล gemini-1.5-flash")
+                else:
+                    st.error(f"เกิดข้อผิดพลาด: {e}")
