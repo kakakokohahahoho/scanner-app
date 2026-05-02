@@ -57,7 +57,7 @@ if uploaded_file is not None and client is not None:
             try:
                 # เปลี่ยนรุ่นเป็น 1.5-flash เพื่อเลี่ยงปัญหาโควตาเต็ม (429) ของรุ่น 2.0
                 response = client.models.generate_content(
-                    model='gemini-2.0-Flash', 
+                    model='gemini-2.0-flash', 
                     contents=[prompt, image]
                 )
                 
